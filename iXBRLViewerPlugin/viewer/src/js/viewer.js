@@ -1,11 +1,10 @@
 // See COPYRIGHT.md for copyright information
 
 import $ from 'jquery'
-import { numberMatchSearch, fullDateMatch } from './number-matcher.js'
+import { numberMatchSearch } from './number-matcher.js'
 import { TableExport } from './tableExport.js'
-import { escapeRegex } from './util.js'
 import { IXNode } from './ixnode.js';
-import { setDefault, runGenerator } from './util.js';
+import { runGenerator } from './util.js';
 import { DocOrderIndex } from './docOrderIndex.js';
 import { MessageBox } from './messagebox.js';
 
