@@ -522,7 +522,7 @@ export class Viewer {
         
         $('#iframe-container .zoom-in').click(() => this.zoomIn());
         $('#iframe-container .zoom-out').click(() => this.zoomOut());
-        $('#iframe-container .print').click(() => this.currentDocument().get(0).contentWindow.print());
+        $('#iframe-container .print').click(() => this.print());
 
         TableExport.addHandles(this._contents, this._report);
     }
@@ -769,6 +769,176 @@ export class Viewer {
 
         const newHeight = $("html", this._contents).height();
         this._contents.scrollTop(newHeight * (viewTop)/height );
+    }
+
+    print() {
+        let doc = this.currentDocument().get(0).contentDocument;
+        function run() {
+            // const WIDTH = 1080 / scale;
+            const WIDTH = 1080;
+            const HEIGHT = 1400;
+            const tables = [...doc.getElementsByTagName("table")];
+            const size = tables.length; // required because tables.length keeps increasing as we append
+            for (let i = 0; i < size; i++) {
+                let table = tables[i];
+                let footer = table.parentNode.querySelector(".schedule-footer");
+                let parent = table.parentElement;
+                let tableRect = table.getBoundingClientRect();
+                let fullTableWidth = tableRect.width;
+
+                let clonedTables = [];
+                let prev = null;
+                if (parent.className.indexOf("xbrl") > -1
+                        && parent.tagName === "DIV"
+                        && table.className.indexOf("xbrl") > -1
+                        && table.className.indexOf("schedule-header") < 0
+                        && table.children[0].children[0].className.indexOf("sch-title") < 0 //TODO null proof this
+                ) {
+                    if (fullTableWidth > WIDTH) { // A4 width in pixels.
+                        parent.style.display = "block";
+                        let headerRow = table.querySelector("tbody tr.schedule-row");
+                        if (headerRow == null) {
+                            continue;
+                        }
+                        let cols = headerRow.querySelectorAll("td");
+                        let index = cols[0];
+                        let indexWidth = index.getBoundingClientRect().width;
+                        let width = 0;
+                        let startCol = 0;
+                        let lastCol = 0;
+
+                        let overflows = Math.ceil(fullTableWidth / WIDTH)-1;
+                        console.log(table);
+                        console.log("^ this table overflows an A4 document by " + (fullTableWidth - WIDTH) + "px");
+                        console.log("this table needs replicated " + overflows + " times");
+                        table.style.display = "list-item";
+                        prev = table;
+                        for (let j = 0; j <= overflows; j++) {
+                            startCol = lastCol;
+                            width = width === 0 ? 0 : indexWidth;
+                            for (let k = startCol; k < cols.length; k++) {
+                                let col = cols[k];
+                                let colWidth = col.getBoundingClientRect().width;
+                                if (width + colWidth < WIDTH) {
+                                    // || cols.length - k !== 1) { // TODO handle a case where there's one column overflowing the whole table?
+                                    width += colWidth;
+                                    lastCol = k;
+                                } else {
+                                    lastCol = k;
+                                    break;
+                                }
+                            }
+                            let clonedTable = table.cloneNode(true);
+                            let clonedFooter = footer.cloneNode(true);
+                            clonedFooter.innerText = clonedFooter.innerText += " table " + (j+1) + " of " + (overflows+1);
+                            clonedTable.style.width = "100%";
+                            // clonedTable.style.width = width + 10 + "px";
+                            let clonedRows = clonedTable.querySelectorAll("tr");
+                            for (let r = 0; r < clonedRows.length; r++) {
+                                let clonedRow = clonedRows[r];
+                                clonedRow.style.pageBreakAfter = "never"
+                                clonedRow.style.pageBreakBefore = "never"
+                                clonedRow.style.pageBreakInside = "never";
+                                let clonedRowCols = clonedRow.querySelectorAll("td");
+
+                                for (let k = 0; k < clonedRowCols.length; k++) {
+                                    if (k === 0 || (k >= startCol && k < lastCol)) {
+                                    } else {
+                                        clonedRowCols[k].remove();
+                                    }
+                                }
+                            }
+                            prev.parentNode.insertBefore(clonedTable, prev.nextSibling);
+                            clonedTable.style.display = "list-item";
+                            clonedTable.style.position = "relative";
+                            clonedTable.style.pageBreakBefore = "always";
+                            clonedTable.style.pageBreakInside = "never";
+                            clonedTable.footer = clonedFooter;
+                            // clonedFooter.style.pageBreakAfter = "always";
+                            //
+                            // let separator = document.createElement("div")
+                            // separator.className = "print-page-separator schedule-separator luke";
+                            // clonedTable.parentNode.insertBefore(clonedFooter, clonedTable.nextSibling);
+                            prev = clonedTable;
+                            clonedTables.push(clonedTable);
+                        }
+                        table.style.display = "none";
+
+                        // TODO - this only checks tables that overflowed horizontally first.
+                        for (let k = 0; k < clonedTables.length; k++) {
+                            let table2 = clonedTables[k];
+                            let rows2 = table2.querySelectorAll("tr");
+                            let length = rows2.length;
+                            let headerRow2 = rows2[0];
+                            let headerHeight = headerRow2.getBoundingClientRect().height;
+                            let tableRect2 = table2.getBoundingClientRect();
+                            let fullTableHeight = tableRect2.height;
+                            let height = 0;
+                            let startRow = 0;
+                            let lastRow = 0;
+                            // if (fullTableHeight > HEIGHT){
+                                let overflows = Math.ceil(fullTableHeight / HEIGHT)-1;
+                                for (let j = 0; j <= overflows; j++) {
+                                    let clonedTable = table2.cloneNode(true);
+                                    let clonedFooter = table2.footer.cloneNode(true);
+                                    clonedFooter.innerText = clonedFooter.innerText += " page " + (j+1) + " of " + (overflows+1);
+                                    clonedTable.style.width = "100%";
+
+                                    height = headerHeight + 100; // TODO switch 100 for the actual height of the footer section
+                                    startRow = lastRow + 1;
+                                    // height = height === 0 ? 0 : indexWidth;
+                                    for (let k = startRow; k < length; k++) {
+                                        let row = rows2[k];
+                                        let rowHeight = row.getBoundingClientRect().height;
+                                        if (height + rowHeight < HEIGHT) {
+                                            // || rows.length - k !== 1) { // TODO handle a case where there's one row overflowing the whole table?
+                                            height += rowHeight;
+                                            lastRow = k;
+                                        } else {
+                                            lastRow = k;
+                                            break;
+                                        }
+                                    }
+                                    let clonedRows = clonedTable.querySelectorAll("tr");
+                                    for (let r = 0; r < clonedRows.length; r++) {
+                                        let clonedRow = clonedRows[r];
+
+                                        for (let k = 0; k < clonedRows.length; k++) {
+                                            if (k === 0 // always include first row
+                                                    || (k >= startRow && k <= lastRow)
+                                                    // || (k === startRow && startRow === (length - 1)) // don't include lastRow, unless it is the last table element
+                                            ) {
+                                                clonedRow.style.pageBreakAfter = "auto";
+                                                clonedRow.style.pageBreakBefore = "auto";
+                                                clonedRow.style.pageBreakInside = "never";
+                                            } else {
+                                                clonedRows[k].remove();
+                                            }
+                                        }
+                                    }
+
+                                    prev.parentNode.insertBefore(clonedTable, prev.nextSibling);
+                                    clonedTable.style.display = "list-item";
+                                    clonedTable.style.position = "relative";
+                                    clonedTable.style.pageBreakBefore = "always";
+                                    clonedFooter.style.pageBreakAfter = "always";
+
+                                    let separator = document.createElement("div")
+                                    separator.className = "print-page-separator schedule-separator luke";
+                                    clonedTable.parentNode.insertBefore(clonedFooter, clonedTable.nextSibling);
+                                    prev = clonedFooter;
+                                    // clonedTables.push(clonedTable); // TODO DON'T do this because we are processing the list and this alters it inline
+                                }
+                                table2.style.display = "none";
+                            }
+                        // }
+                    }
+                }
+            }
+        }
+
+        run();
+        this.currentDocument().get(0).contentWindow.print();
     }
 
     zoomIn() {
